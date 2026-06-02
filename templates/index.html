@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>USGS .param File Downloader</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background: #f0f4f8; }
+    .navbar { background: linear-gradient(135deg, #1a3a5c, #2e6da4); }
+    .card { border: none; box-shadow: 0 2px 8px rgba(0,0,0,.08); border-radius: 12px; }
+    .table th { background: #1a3a5c; color: #fff; font-size: .82rem; font-weight: 600; white-space: nowrap; }
+    .table td { vertical-align: middle; font-size: .83rem; }
+    .badge-pending   { background: #adb5bd; color: #fff; }
+    .badge-searching, .badge-downloading { background: #0d6efd; color: #fff; animation: pulse .9s infinite alternate; }
+    .badge-found     { background: #198754; color: #fff; }
+    .badge-done      { background: #0d6efd; color: #fff; }
+    .badge-not_found, .badge-no_finite_fault, .badge-no_param { background: #ffc107; color: #000; }
+    .badge-error     { background: #dc3545; color: #fff; }
+    .badge-mt_found  { background: #6f42c1; color: #fff; }
+    .badge-cmt_found { background: #0d6efd; color: #fff; }
+    .badge-fetching  { background: #fd7e14; color: #fff; animation: pulse .9s infinite alternate; }
+    .badge-mt_not_found, .badge-no_event, .badge-cmt_not_found { background: #6c757d; color: #fff; }
+    @keyframes pulse { from { opacity: 1; } to { opacity: .55; } }
+    .progress-bar-custom { height: 20px; border-radius: 10px; transition: width .4s; }
+    .page-link { color: #1a3a5c; }
+    .page-item.active .page-link { background: #1a3a5c; border-color: #1a3a5c; }
+    .btn-act { font-size: .75rem; padding: 2px 8px; }
+    .tooltip-inner { max-width: 320px; font-size: .78rem; text-align: left; }
+    #searchInput { max-width: 280px; }
+    .summary-card .num { font-size: 1.6rem; font-weight: 700; }
+    .region-cell { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark px-4 py-2 mb-4">
+  <span class="navbar-brand fw-bold fs-5"><i class="bi bi-cloud-download me-2"></i>USGS Finite-Fault .param Downloader</span>
+  <span class="text-white-50 small">{{ total }} events loaded</span>
+</nav>
+
+<div class="container-fluid px-4">
+
+  <!-- Summary cards -->
+  <div class="row g-3 mb-4" id="summaryRow">
+    <div class="col-6 col-md-2">
+      <div class="card summary-card p-3 text-center">
+        <div class="num text-primary" id="sumTotal">{{ total }}</div>
+        <div class="text-muted small">Total</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card summary-card p-3 text-center">
+        <div class="num text-success" id="sumFound">0</div>
+        <div class="text-muted small">Found</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card summary-card p-3 text-center">
+        <div class="num text-warning" id="sumNotFound">0</div>
+        <div class="text-muted small">No Product</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card summary-card p-3 text-center">
+        <div class="num text-danger" id="sumError">0</div>
+        <div class="text-muted small">Error</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card summary-card p-3 text-center">
+        <div class="num text-primary" id="sumDone">0</div>
+        <div class="text-muted small">Downloaded</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card summary-card p-3 text-center">
+        <div class="num text-secondary" id="sumPending">{{ total }}</div>
+        <div class="text-muted small">Pending</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="card mb-4 p-3">
+    <div class="d-flex justify-content-between mb-1">
+      <small class="text-muted">Download progress</small>
+      <small id="progressText" class="text-muted">0 / {{ total }}</small>
+    </div>
+    <div class="progress" style="height:20px; border-radius:10px;">
+      <div id="progressBar" class="progress-bar bg-success progress-bar-custom" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card mb-4 p-3">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <button class="btn btn-outline-primary btn-sm" onclick="searchAll()">
+        <i class="bi bi-search me-1"></i>Search All Events
+      </button>
+      <button class="btn btn-success btn-sm" onclick="downloadAll()">
+        <i class="bi bi-cloud-download me-1"></i>Download All .param Files
+      </button>
+      <button class="btn btn-warning btn-sm" onclick="fetchMtAll()">
+        <i class="bi bi-diagram-3 me-1"></i>Fetch USGS MT
+      </button>
+      <button class="btn btn-outline-info btn-sm" onclick="fetchCmtAll()">
+        <i class="bi bi-globe me-1"></i>Fetch GlobalCMT
+      </button>
+      <a href="/api/export-mt" class="btn btn-outline-dark btn-sm">
+        <i class="bi bi-file-earmark-excel me-1"></i>Export MT Data
+      </a>
+      <div class="vr mx-1"></div>
+      <label class="text-muted small me-1">Per page:</label>
+      <select id="perPageSel" class="form-select form-select-sm" style="width:80px" onchange="changePerPage()">
+        <option value="10">10</option>
+        <option value="20" selected>20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+      <div class="ms-auto">
+        <input id="searchInput" type="text" class="form-control form-control-sm" placeholder="Filter by region…" oninput="filterTable()">
+      </div>
+    </div>
+    <div id="bulkStatus" class="mt-2 text-muted small d-none"></div>
+  </div>
+
+  <!-- Table -->
+  <div class="card mb-4">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0" id="eventsTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Date</th>
+            <th>Time (UTC)</th>
+            <th>Lat</th>
+            <th>Lon</th>
+            <th>Mw</th>
+            <th>Region</th>
+            <th>USGS Event ID</th>
+            <th>Search</th>
+            <th>Download</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td colspan="11" class="text-center text-muted py-4">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <nav aria-label="Pagination" class="mb-5">
+    <ul class="pagination justify-content-center" id="pagination"></ul>
+  </nav>
+</div>
+
+<!-- Toast for notifications -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1100">
+  <div id="liveToast" class="toast align-items-center text-bg-primary border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="toastMsg"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const TOTAL = {{ total }};
+let currentPage = 1;
+let perPage = 20;
+let totalPages = 1;
+let allStatus = {};     // idx → status object (from SSE)
+let currentRows = [];   // events on current page
+let filterText = '';
+
+// ── SSE ────────────────────────────────────────────────────────────────────
+const evtSrc = new EventSource('/api/stream');
+evtSrc.onmessage = function(e) {
+  const msg = JSON.parse(e.data);
+  if (msg.type === 'ping') return;
+  if (msg.type === 'init') {
+    // Convert string keys to ints
+    for (const [k, v] of Object.entries(msg.status)) {
+      allStatus[parseInt(k)] = v;
+    }
+    updateSummary();
+    renderCurrentPage();
+    return;
+  }
+  if (msg.type === 'status') {
+    allStatus[msg.idx] = msg.status;
+    updateRow(msg.idx);
+    updateSummary();
+    updateProgress();
+    return;
+  }
+  if (msg.type === 'bulk_start') {
+    showBulkStatus(`Bulk download started — ${msg.done}/${msg.total} already done.`);
+    return;
+  }
+  if (msg.type === 'bulk_done') {
+    showBulkStatus(`Bulk download finished — ${msg.done}/${msg.total} downloaded.`);
+    toast(`Bulk download complete: ${msg.done}/${msg.total} files.`);
+    return;
+  }
+  if (msg.type === 'search_all_done') {
+    showBulkStatus('Search-all finished.');
+    return;
+  }
+  if (msg.type === 'mt_all_done') {
+    showBulkStatus('USGS moment-tensor fetch complete.');
+    toast('USGS MT fetch done. Use "Export MT Data" to download.');
+    return;
+  }
+  if (msg.type === 'cmt_all_done') {
+    showBulkStatus('GlobalCMT fetch complete.');
+    toast('GlobalCMT fetch done. Use "Export MT Data" to download.');
+    return;
+  }
+};
+evtSrc.onerror = function() {
+  console.warn('SSE disconnected, retrying…');
+};
+
+// ── API calls ──────────────────────────────────────────────────────────────
+async function apiFetch(url, method='POST') {
+  const r = await fetch(url, { method });
+  return r.json();
+}
+
+function searchAll() { apiFetch('/api/search-all'); showBulkStatus('Searching all events…'); }
+function downloadAll() { apiFetch('/api/download-all'); showBulkStatus('Download all started…'); }
+function fetchMtAll()  { apiFetch('/api/fetch-mt-all');  showBulkStatus('Fetching USGS moment-tensor data…'); }
+function fetchCmtAll() { apiFetch('/api/fetch-cmt-all'); showBulkStatus('Fetching GlobalCMT data…'); }
+
+function searchEvent(idx)   { apiFetch(`/api/search/${idx}`); }
+function downloadEvent(idx) { apiFetch(`/api/download/${idx}`); }
+function fetchMt(idx)       { apiFetch(`/api/fetch-mt/${idx}`); }
+function fetchCmt(idx)      { apiFetch(`/api/fetch-cmt/${idx}`); }
+function resetEvent(idx)    { apiFetch(`/api/reset/${idx}`); }
+
+function openFile(filename) {
+  window.open(`/api/get-file/${encodeURIComponent(filename)}`, '_blank');
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function statusBadge(s, field) {
+  const val = s ? s[field] : 'pending';
+  const labels = {
+    pending: 'Pending', searching: 'Searching…', found: 'Found',
+    not_found: 'Not found', no_finite_fault: 'No FF product',
+    no_param: 'No .param', error: 'Error',
+    downloading: 'Downloading…', done: 'Done',
+  };
+  const cls = `badge badge-${val}`;
+  const tip = s && s.error ? ` title="${escHtml(s.error)}"` : '';
+  return `<span class="${cls}"${tip}>${labels[val] || val}</span>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function buildRow(ev) {
+  const s = allStatus[ev.idx];
+  const searchBadge = statusBadge(s, 'search');
+  const dlBadge = statusBadge(s, 'download');
+  const eventIdLink = s && s.event_id
+    ? `<a href="https://earthquake.usgs.gov/earthquakes/eventpage/${s.event_id}" target="_blank" class="small text-truncate d-inline-block" style="max-width:110px">${s.event_id}</a>`
+    : '<span class="text-muted small">—</span>';
+
+  const canDownload = s && s.search === 'found' && s.download !== 'done' && s.download !== 'downloading';
+  const canSearch = s && !['found','searching'].includes(s.search);
+  const hasFile = s && s.download === 'done' && s.param_filename;
+  const noFF       = s && ['no_finite_fault','not_found','no_param'].includes(s.search);
+  const canFetchMt = noFF && s.mt_status !== 'found' && s.mt_status !== 'fetching';
+  const hasMt      = s && s.mt_status === 'found';
+  const canFetchCmt = s && s.cmt_status !== 'found' && s.cmt_status !== 'fetching';
+  const hasCmt     = s && s.cmt_status === 'found';
+
+  const mtLabels  = { pending:'—', fetching:'Fetching…', found:'USGS MT', not_found:'No MT', no_event:'No Event', error:'MT Err' };
+  const cmtLabels = { pending:'—', fetching:'Fetching…', found:'GlobalCMT', not_found:'No CMT', error:'CMT Err' };
+
+  const mtBadge  = (noFF || hasMt)
+    ? `<span class="badge badge-${hasMt ? 'mt_found' : (s.mt_status === 'fetching' ? 'fetching' : 'mt_not_found')}">${mtLabels[s.mt_status] || s.mt_status}</span>`
+    : '';
+  const cmtBadge = hasCmt
+    ? `<span class="badge badge-cmt_found">${cmtLabels[s.cmt_status]}</span>`
+    : (s && s.cmt_status === 'fetching' ? `<span class="badge badge-fetching">Fetching…</span>` : '');
+
+  const actBtns = `
+    ${canSearch   ? `<button class="btn btn-outline-secondary btn-act me-1" onclick="searchEvent(${ev.idx})"   title="Search USGS"><i class="bi bi-search"></i></button>` : ''}
+    ${canDownload ? `<button class="btn btn-outline-success btn-act me-1"   onclick="downloadEvent(${ev.idx})" title="Download .param"><i class="bi bi-cloud-download"></i></button>` : ''}
+    ${canFetchMt  ? `<button class="btn btn-outline-warning btn-act me-1"   onclick="fetchMt(${ev.idx})"       title="Fetch USGS Moment Tensor"><i class="bi bi-diagram-3"></i></button>` : ''}
+    ${canFetchCmt ? `<button class="btn btn-outline-info btn-act me-1"      onclick="fetchCmt(${ev.idx})"      title="Fetch GlobalCMT"><i class="bi bi-globe"></i></button>` : ''}
+    ${hasFile     ? `<button class="btn btn-primary btn-act me-1"           onclick="openFile('${escHtml(s.param_filename)}')" title="Save file"><i class="bi bi-save"></i></button>` : ''}
+    ${s && s.search !== 'pending' ? `<button class="btn btn-outline-danger btn-act" onclick="resetEvent(${ev.idx})" title="Reset"><i class="bi bi-arrow-counterclockwise"></i></button>` : ''}
+  `;
+
+  return `<tr id="row-${ev.idx}">
+    <td class="text-muted">${ev.idx + 1}</td>
+    <td>${ev.date}</td>
+    <td class="text-monospace">${ev.time}</td>
+    <td>${Number(ev.lat).toFixed(2)}</td>
+    <td>${Number(ev.lon).toFixed(2)}</td>
+    <td><strong>${ev.mw}</strong></td>
+    <td class="region-cell" title="${escHtml(ev.region)}">${escHtml(ev.region)}</td>
+    <td>${eventIdLink}</td>
+    <td>${searchBadge} ${mtBadge} ${cmtBadge}</td>
+    <td>${dlBadge}</td>
+    <td style="white-space:nowrap">${actBtns}</td>
+  </tr>`;
+}
+
+function updateRow(idx) {
+  const row = document.getElementById(`row-${idx}`);
+  if (!row) return;
+  // Find the matching ev in currentRows
+  const ev = currentRows.find(e => e.idx === idx);
+  if (!ev) return;
+  row.outerHTML = buildRow(ev);
+}
+
+function renderCurrentPage() {
+  // Filter
+  const query = filterText.toLowerCase();
+
+  fetch(`/api/events?page=${currentPage}&per_page=${perPage}`)
+    .then(r => r.json())
+    .then(data => {
+      totalPages = data.pages;
+      currentRows = data.events;
+
+      let filtered = currentRows;
+      if (query) {
+        filtered = currentRows.filter(e => e.region.toLowerCase().includes(query));
+      }
+
+      const tbody = document.getElementById('tableBody');
+      if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No events match the filter.</td></tr>';
+      } else {
+        tbody.innerHTML = filtered.map(buildRow).join('');
+      }
+      renderPagination(data.page, data.pages);
+    });
+}
+
+function renderPagination(page, pages) {
+  const ul = document.getElementById('pagination');
+  let html = '';
+
+  const prevDis = page <= 1 ? 'disabled' : '';
+  html += `<li class="page-item ${prevDis}"><a class="page-link" href="#" onclick="goPage(${page-1});return false;">‹ Prev</a></li>`;
+
+  let start = Math.max(1, page - 3);
+  let end = Math.min(pages, page + 3);
+  if (start > 1) html += `<li class="page-item"><a class="page-link" href="#" onclick="goPage(1);return false;">1</a></li><li class="page-item disabled"><span class="page-link">…</span></li>`;
+  for (let p = start; p <= end; p++) {
+    html += `<li class="page-item ${p===page?'active':''}"><a class="page-link" href="#" onclick="goPage(${p});return false;">${p}</a></li>`;
+  }
+  if (end < pages) html += `<li class="page-item disabled"><span class="page-link">…</span></li><li class="page-item"><a class="page-link" href="#" onclick="goPage(${pages});return false;">${pages}</a></li>`;
+
+  const nextDis = page >= pages ? 'disabled' : '';
+  html += `<li class="page-item ${nextDis}"><a class="page-link" href="#" onclick="goPage(${page+1});return false;">Next ›</a></li>`;
+  ul.innerHTML = html;
+}
+
+function goPage(p) {
+  if (p < 1 || p > totalPages) return;
+  currentPage = p;
+  renderCurrentPage();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function changePerPage() {
+  perPage = parseInt(document.getElementById('perPageSel').value);
+  currentPage = 1;
+  renderCurrentPage();
+}
+
+function filterTable() {
+  filterText = document.getElementById('searchInput').value;
+  renderCurrentPage();
+}
+
+// ── Summary & progress ────────────────────────────────────────────────────
+function updateSummary() {
+  let found = 0, notFound = 0, err = 0, done = 0, pending = 0;
+  for (const s of Object.values(allStatus)) {
+    if (s.search === 'found') found++;
+    else if (['not_found','no_finite_fault','no_param'].includes(s.search)) notFound++;
+    else if (s.search === 'error') err++;
+    if (s.download === 'done') done++;
+    if (s.search === 'pending') pending++;
+  }
+  document.getElementById('sumFound').textContent = found;
+  document.getElementById('sumNotFound').textContent = notFound;
+  document.getElementById('sumError').textContent = err;
+  document.getElementById('sumDone').textContent = done;
+  document.getElementById('sumPending').textContent = pending;
+  updateProgress(done);
+}
+
+function updateProgress(done) {
+  if (done === undefined) {
+    done = Object.values(allStatus).filter(s => s.download === 'done').length;
+  }
+  const pct = TOTAL > 0 ? (done / TOTAL * 100).toFixed(1) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressText').textContent = `${done} / ${TOTAL}`;
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────
+function showBulkStatus(msg) {
+  const el = document.getElementById('bulkStatus');
+  el.textContent = msg;
+  el.classList.remove('d-none');
+}
+
+function toast(msg) {
+  document.getElementById('toastMsg').textContent = msg;
+  new bootstrap.Toast(document.getElementById('liveToast')).show();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+renderCurrentPage();
+</script>
+</body>
+</html>
