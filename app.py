@@ -15,7 +15,7 @@ from flask import Flask, render_template, jsonify, request, Response, send_file
 
 app = Flask(__name__)
 
-EXCEL_PATH = r'C:\Users\Lenovo\CMT_Paginated_Dataset_Sow.xlsx'
+EXCEL_PATH = Path(__file__).parent / 'CMT_Paginated_Dataset_Sow.xlsx'
 DOWNLOAD_DIR = Path(__file__).parent / 'downloads'
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
