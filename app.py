@@ -606,8 +606,9 @@ def export_mt():
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+load_events()
+
 if __name__ == '__main__':
-    load_events()
     print(f"Loaded {len(events)} earthquake events from Excel.")
     print("Open http://localhost:5001 in your browser.")
     app.run(debug=False, port=5001, threaded=True)
