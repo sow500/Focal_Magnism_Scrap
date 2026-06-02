@@ -125,6 +125,26 @@
       </div>
     </div>
     <div id="bulkStatus" class="mt-2 text-muted small d-none"></div>
+
+    <!-- Advanced toggle -->
+    <div class="mt-2">
+      <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#advancedPanel" role="button">
+        <i class="bi bi-gear me-1"></i>Advanced
+      </a>
+    </div>
+    <div class="collapse mt-2" id="advancedPanel">
+      <div class="border rounded p-3 bg-light">
+        <p class="text-muted small mb-2 fw-semibold">Replace Dataset</p>
+        <p class="text-muted small mb-2">Upload a new <code>.xlsx</code> file to replace the current earthquake dataset and reload all events.</p>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <input type="file" id="excelFileInput" accept=".xlsx" class="form-control form-control-sm" style="max-width:300px">
+          <button class="btn btn-sm btn-outline-secondary" onclick="uploadExcel()">
+            <i class="bi bi-upload me-1"></i>Upload &amp; Reload
+          </button>
+          <span id="uploadStatus" class="small text-muted"></span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Table -->
@@ -224,6 +244,11 @@ evtSrc.onmessage = function(e) {
     toast('GlobalCMT fetch done. Use "Export MT Data" to download.');
     return;
   }
+  if (msg.type === 'reload') {
+    toast(`Dataset reloaded — ${msg.total} events loaded. Refreshing…`);
+    setTimeout(() => location.reload(), 1500);
+    return;
+  }
 };
 evtSrc.onerror = function() {
   console.warn('SSE disconnected, retrying…');
@@ -245,6 +270,21 @@ function downloadEvent(idx) { apiFetch(`/api/download/${idx}`); }
 function fetchMt(idx)       { apiFetch(`/api/fetch-mt/${idx}`); }
 function fetchCmt(idx)      { apiFetch(`/api/fetch-cmt/${idx}`); }
 function resetEvent(idx)    { apiFetch(`/api/reset/${idx}`); }
+
+async function uploadExcel() {
+  const input = document.getElementById('excelFileInput');
+  const statusEl = document.getElementById('uploadStatus');
+  if (!input.files.length) { statusEl.textContent = 'Please select a file first.'; return; }
+  const formData = new FormData();
+  formData.append('file', input.files[0]);
+  statusEl.textContent = 'Uploading…';
+  try {
+    const r = await fetch('/api/upload-excel', { method: 'POST', body: formData });
+    const data = await r.json();
+    if (data.error) { statusEl.className = 'small text-danger'; statusEl.textContent = data.error; }
+    else { statusEl.className = 'small text-success'; statusEl.textContent = `Uploaded — ${data.total} events found. Reloading…`; }
+  } catch(e) { statusEl.className = 'small text-danger'; statusEl.textContent = 'Upload failed.'; }
+}
 
 function openFile(filename) {
   window.open(`/api/get-file/${encodeURIComponent(filename)}`, '_blank');

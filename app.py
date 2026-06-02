@@ -419,6 +419,26 @@ def get_file(filename):
     return jsonify({'error': 'File not found'}), 404
 
 
+@app.route('/api/upload-excel', methods=['POST'])
+def upload_excel():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    f = request.files['file']
+    if not f.filename.lower().endswith('.xlsx'):
+        return jsonify({'error': 'Only .xlsx files are accepted'}), 400
+
+    save_path = Path(__file__).parent / 'CMT_Paginated_Dataset_Sow.xlsx'
+    f.save(str(save_path))
+
+    global events, status
+    events.clear()
+    status.clear()
+    load_events()
+
+    broadcast({'type': 'reload', 'total': len(events)})
+    return jsonify({'status': 'ok', 'total': len(events)})
+
+
 @app.route('/api/reset/<int:idx>', methods=['POST'])
 def reset_event(idx):
     if not (0 <= idx < len(events)):
